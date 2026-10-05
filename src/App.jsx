@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const BACKEND_URL = "https://edupay-ai.onrender.com";
 
@@ -6,11 +6,72 @@ function App() {
   const [amount, setAmount] = useState("10.00");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [paymentStatus, setPaymentStatus] = useState("");
+
+  useEffect(() => {
+    const captureApprovedOrder = async () => {
+      const params = new URLSearchParams(window.location.search);
+      const orderId = params.get("token");
+
+      if (!orderId) {
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setPaymentStatus("capturing");
+        setMessage("Capturing your PayPal payment...");
+
+        const response = await fetch(
+          `${BACKEND_URL}/paypal/capture-order/${orderId}`,
+          {
+            method: "POST"
+          }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            data.detail || "Unable to capture PayPal payment."
+          );
+        }
+
+        const status = data.order?.status;
+
+        if (status === "COMPLETED") {
+          setPaymentStatus("completed");
+          setMessage(
+            "Payment completed successfully through PayPal Sandbox."
+          );
+        } else {
+          setPaymentStatus("error");
+          setMessage(
+            `PayPal payment status: ${status || "Unknown"}`
+          );
+        }
+
+        window.history.replaceState(
+          {},
+          document.title,
+          window.location.pathname
+        );
+      } catch (error) {
+        setPaymentStatus("error");
+        setMessage(error.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    captureApprovedOrder();
+  }, []);
 
   const createPayment = async () => {
     try {
       setLoading(true);
       setMessage("");
+      setPaymentStatus("");
 
       const response = await fetch(
         `${BACKEND_URL}/paypal/create-order`,
@@ -40,13 +101,15 @@ function App() {
       );
 
       if (!approvalLink) {
-        throw new Error("PayPal approval link was not returned.");
+        throw new Error(
+          "PayPal approval link was not returned."
+        );
       }
 
       window.location.href = approvalLink.href;
     } catch (error) {
       setMessage(error.message);
-    } finally {
+      setPaymentStatus("error");
       setLoading(false);
     }
   };
@@ -104,6 +167,7 @@ function App() {
                 onChange={(event) =>
                   setAmount(event.target.value)
                 }
+                disabled={loading}
               />
 
               <span>USD</span>
@@ -115,12 +179,20 @@ function App() {
               disabled={loading}
             >
               {loading
-                ? "Creating PayPal Order..."
+                ? "Processing PayPal Payment..."
                 : "Continue with PayPal"}
             </button>
 
             {message && (
-              <p className="error-message">
+              <p
+                className={
+                  paymentStatus === "completed"
+                    ? "success-message"
+                    : paymentStatus === "error"
+                      ? "error-message"
+                      : "status-message"
+                }
+              >
                 {message}
               </p>
             )}
