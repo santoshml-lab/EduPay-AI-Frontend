@@ -14,6 +14,8 @@ function App() {
   const [status, setStatus] = useState("");
   const [statusType, setStatusType] = useState("");
 
+  const [paymentSuccess, setPaymentSuccess] = useState(null);
+
   useEffect(() => {
     const captureApprovedOrder = async () => {
       const params = new URLSearchParams(window.location.search);
@@ -27,6 +29,14 @@ function App() {
         setLoadingPayment(true);
         setStatusType("status");
         setStatus("Capturing your PayPal payment...");
+
+        const savedPlan = sessionStorage.getItem(
+          "edupay_payment_plan"
+        );
+
+        if (savedPlan) {
+          setPaymentPlan(JSON.parse(savedPlan));
+        }
 
         const response = await fetch(
           `${BACKEND_URL}/paypal/capture-order/${orderId}`,
@@ -46,9 +56,29 @@ function App() {
         const paypalStatus = data.order?.status;
 
         if (paypalStatus === "COMPLETED") {
-          setStatusType("success");
-          setStatus(
-            "Payment completed successfully through PayPal Sandbox."
+          const capture =
+            data.order?.purchase_units?.[0]?.payments
+              ?.captures?.[0];
+
+          setPaymentSuccess({
+            orderId: data.order?.id || orderId,
+            captureId: capture?.id || "Confirmed",
+            amount:
+              capture?.amount?.value ||
+              data.order?.purchase_units?.[0]?.amount?.value ||
+              "Unknown",
+            currency:
+              capture?.amount?.currency_code ||
+              data.order?.purchase_units?.[0]?.amount
+                ?.currency_code ||
+              "USD"
+          });
+
+          setStatus("");
+          setStatusType("");
+
+          sessionStorage.removeItem(
+            "edupay_payment_plan"
           );
         } else {
           setStatusType("error");
@@ -79,6 +109,7 @@ function App() {
     try {
       setLoadingPlan(true);
       setPaymentPlan(null);
+      setPaymentSuccess(null);
       setStatus("");
       setStatusType("");
 
@@ -124,6 +155,11 @@ function App() {
       setStatus("");
       setStatusType("");
 
+      sessionStorage.setItem(
+        "edupay_payment_plan",
+        JSON.stringify(paymentPlan)
+      );
+
       const response = await fetch(
         `${BACKEND_URL}/paypal/create-order`,
         {
@@ -159,6 +195,10 @@ function App() {
 
       window.location.href = approvalLink.href;
     } catch (error) {
+      sessionStorage.removeItem(
+        "edupay_payment_plan"
+      );
+
       setStatusType("error");
       setStatus(error.message);
       setLoadingPayment(false);
@@ -194,112 +234,174 @@ function App() {
             creates a payment plan, and connects it to PayPal.
           </p>
 
-          <div className="payment-card">
-            <div className="card-header">
-              <div>
-                <p className="card-label">
-                  AI Payment Planner
-                </p>
-
-                <h2>Plan your payment</h2>
+          {paymentSuccess ? (
+            <div className="payment-card success-card">
+              <div className="success-icon">
+                ✓
               </div>
 
-              <div className="secure">
-                AI
-              </div>
-            </div>
+              <p className="eyebrow">
+                PAYMENT SUCCESSFUL
+              </p>
 
-            <label htmlFor="message">
-              Tell EduPay AI what you need to pay
-            </label>
+              <h2>
+                Payment completed successfully
+              </h2>
 
-            <textarea
-              id="message"
-              value={message}
-              onChange={(event) =>
-                setMessage(event.target.value)
-              }
-              disabled={loadingPlan || loadingPayment}
-              rows="4"
-            />
+              <p className="success-description">
+                Your education payment was successfully
+                processed through PayPal Sandbox.
+              </p>
 
-            <button
-              className="pay-button"
-              onClick={generatePaymentPlan}
-              disabled={loadingPlan || loadingPayment}
-            >
-              {loadingPlan
-                ? "Creating Payment Plan..."
-                : "Create AI Payment Plan"}
-            </button>
-
-            {paymentPlan && (
               <div className="payment-plan">
-                <p className="card-label">
-                  AI PAYMENT PLAN
-                </p>
-
-                <div className="plan-row">
-                  <span>Total Course Fee</span>
-                  <strong>
-                    {paymentPlan.currency}{" "}
-                    {paymentPlan.total_amount.toFixed(2)}
-                  </strong>
-                </div>
-
-                <div className="plan-row">
-                  <span>Installments</span>
-                  <strong>
-                    {paymentPlan.installments}
-                  </strong>
-                </div>
-
                 <div className="plan-row highlight">
-                  <span>Each Payment</span>
+                  <span>Paid Amount</span>
+
                   <strong>
-                    {paymentPlan.currency}{" "}
-                    {paymentPlan.installment_amount.toFixed(2)}
+                    {paymentSuccess.currency}{" "}
+                    {paymentSuccess.amount}
+                  </strong>
+                </div>
+
+                <div className="plan-row">
+                  <span>PayPal Order ID</span>
+
+                  <strong>
+                    {paymentSuccess.orderId}
+                  </strong>
+                </div>
+
+                <div className="plan-row">
+                  <span>Capture ID</span>
+
+                  <strong>
+                    {paymentSuccess.captureId}
                   </strong>
                 </div>
 
                 <p className="paypal-plan-note">
-                  Your next payment will be processed
-                  through PayPal Sandbox.
+                  This was a PayPal Sandbox transaction.
+                  No real money was charged.
                 </p>
-
-                <button
-                  className="pay-button"
-                  onClick={createPayment}
-                  disabled={loadingPayment}
-                >
-                  {loadingPayment
-                    ? "Opening PayPal..."
-                    : `Pay ${paymentPlan.currency} ${
-                        paymentPlan.installment_amount.toFixed(2)
-                      } with PayPal`}
-                </button>
               </div>
-            )}
+            </div>
+          ) : (
+            <div className="payment-card">
+              <div className="card-header">
+                <div>
+                  <p className="card-label">
+                    AI Payment Planner
+                  </p>
 
-            {status && (
-              <p
-                className={
-                  statusType === "success"
-                    ? "success-message"
-                    : statusType === "error"
-                      ? "error-message"
-                      : "status-message"
+                  <h2>Plan your payment</h2>
+                </div>
+
+                <div className="secure">
+                  AI
+                </div>
+              </div>
+
+              <label htmlFor="message">
+                Tell EduPay AI what you need to pay
+              </label>
+
+              <textarea
+                id="message"
+                value={message}
+                onChange={(event) =>
+                  setMessage(event.target.value)
+                }
+                disabled={
+                  loadingPlan || loadingPayment
+                }
+                rows="4"
+              />
+
+              <button
+                className="pay-button"
+                onClick={generatePaymentPlan}
+                disabled={
+                  loadingPlan || loadingPayment
                 }
               >
-                {status}
-              </p>
-            )}
+                {loadingPlan
+                  ? "Creating Payment Plan..."
+                  : "Create AI Payment Plan"}
+              </button>
 
-            <p className="sandbox-note">
-              This is a PayPal Sandbox transaction.
-              No real money is charged.
-            </p>
-          </div>
+              {paymentPlan && (
+                <div className="payment-plan">
+                  <p className="card-label">
+                    AI PAYMENT PLAN
+                  </p>
+
+                  <div className="plan-row">
+                    <span>Total Course Fee</span>
+
+                    <strong>
+                      {paymentPlan.currency}{" "}
+                      {paymentPlan.total_amount.toFixed(2)}
+                    </strong>
+                  </div>
+
+                  <div className="plan-row">
+                    <span>Installments</span>
+
+                    <strong>
+                      {paymentPlan.installments}
+                    </strong>
+                  </div>
+
+                  <div className="plan-row highlight">
+                    <span>Each Payment</span>
+
+                    <strong>
+                      {paymentPlan.currency}{" "}
+                      {paymentPlan.installment_amount.toFixed(2)}
+                    </strong>
+                  </div>
+
+                  <p className="paypal-plan-note">
+                    Your next payment will be processed
+                    through PayPal Sandbox.
+                  </p>
+
+                  <button
+                    className="pay-button"
+                    onClick={createPayment}
+                    disabled={loadingPayment}
+                  >
+                    {loadingPayment
+                      ? "Opening PayPal..."
+                      : `Pay ${
+                          paymentPlan.currency
+                        } ${paymentPlan.installment_amount.toFixed(
+                          2
+                        )} with PayPal`}
+                  </button>
+                </div>
+              )}
+
+              {status && (
+                <p
+                  className={
+                    statusType === "success"
+                      ? "success-message"
+                      : statusType === "error"
+                        ? "error-message"
+                        : "status-message"
+                  }
+                >
+                  {status}
+                </p>
+              )}
+
+              <p className="sandbox-note">
+                This is a PayPal Sandbox transaction.
+                No real money is charged.
+              </p>
+            </div>
+          )}
         </section>
 
         <aside className="info-panel">
