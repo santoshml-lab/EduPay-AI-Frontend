@@ -283,6 +283,20 @@ function App() {
                   This was a PayPal Sandbox transaction.
                   No real money was charged.
                 </p>
+                <button
+  className="pay-button"
+  onClick={() => {
+    setPaymentSuccess(null);
+    setPaymentPlan(null);
+    setStatus("");
+    setStatusType("");
+    setMessage(
+      "I need to pay $200 for an online course in 4 equal installments."
+    );
+  }}
+>
+  Create Another Payment Plan
+</button>
               </div>
             </div>
           ) : (
