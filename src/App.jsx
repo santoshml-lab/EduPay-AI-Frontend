@@ -3,10 +3,16 @@ import { useEffect, useState } from "react";
 const BACKEND_URL = "https://edupay-ai.onrender.com";
 
 function App() {
-  const [amount, setAmount] = useState("10.00");
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState("");
-  const [paymentStatus, setPaymentStatus] = useState("");
+  const [message, setMessage] = useState(
+    "I need to pay $200 for an online course in 4 equal installments."
+  );
+
+  const [paymentPlan, setPaymentPlan] = useState(null);
+  const [loadingPlan, setLoadingPlan] = useState(false);
+  const [loadingPayment, setLoadingPayment] = useState(false);
+
+  const [status, setStatus] = useState("");
+  const [statusType, setStatusType] = useState("");
 
   useEffect(() => {
     const captureApprovedOrder = async () => {
@@ -18,9 +24,9 @@ function App() {
       }
 
       try {
-        setLoading(true);
-        setPaymentStatus("capturing");
-        setMessage("Capturing your PayPal payment...");
+        setLoadingPayment(true);
+        setStatusType("status");
+        setStatus("Capturing your PayPal payment...");
 
         const response = await fetch(
           `${BACKEND_URL}/paypal/capture-order/${orderId}`,
@@ -37,17 +43,19 @@ function App() {
           );
         }
 
-        const status = data.order?.status;
+        const paypalStatus = data.order?.status;
 
-        if (status === "COMPLETED") {
-          setPaymentStatus("completed");
-          setMessage(
+        if (paypalStatus === "COMPLETED") {
+          setStatusType("success");
+          setStatus(
             "Payment completed successfully through PayPal Sandbox."
           );
         } else {
-          setPaymentStatus("error");
-          setMessage(
-            `PayPal payment status: ${status || "Unknown"}`
+          setStatusType("error");
+          setStatus(
+            `PayPal payment status: ${
+              paypalStatus || "Unknown"
+            }`
           );
         }
 
@@ -57,21 +65,64 @@ function App() {
           window.location.pathname
         );
       } catch (error) {
-        setPaymentStatus("error");
-        setMessage(error.message);
+        setStatusType("error");
+        setStatus(error.message);
       } finally {
-        setLoading(false);
+        setLoadingPayment(false);
       }
     };
 
     captureApprovedOrder();
   }, []);
 
-  const createPayment = async () => {
+  const generatePaymentPlan = async () => {
     try {
-      setLoading(true);
-      setMessage("");
-      setPaymentStatus("");
+      setLoadingPlan(true);
+      setPaymentPlan(null);
+      setStatus("");
+      setStatusType("");
+
+      const response = await fetch(
+        `${BACKEND_URL}/ai/payment-plan`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            message
+          })
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.detail || "Unable to generate payment plan."
+        );
+      }
+
+      setPaymentPlan(data.payment_plan);
+    } catch (error) {
+      setStatusType("error");
+      setStatus(error.message);
+    } finally {
+      setLoadingPlan(false);
+    }
+  };
+
+  const createPayment = async () => {
+    if (!paymentPlan) {
+      setStatusType("error");
+      setStatus("Please generate a payment plan first.");
+      return;
+    }
+
+    try {
+      setLoadingPayment(true);
+      setStatus("");
+      setStatusType("");
 
       const response = await fetch(
         `${BACKEND_URL}/paypal/create-order`,
@@ -81,8 +132,8 @@ function App() {
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
-            amount,
-            currency: "USD",
+            amount: paymentPlan.installment_amount.toFixed(2),
+            currency: paymentPlan.currency,
             description: "EduPay AI Education Payment"
           })
         }
@@ -108,9 +159,9 @@ function App() {
 
       window.location.href = approvalLink.href;
     } catch (error) {
-      setMessage(error.message);
-      setPaymentStatus("error");
-      setLoading(false);
+      setStatusType("error");
+      setStatus(error.message);
+      setLoadingPayment(false);
     }
   };
 
@@ -129,7 +180,9 @@ function App() {
 
       <main className="hero">
         <section className="hero-content">
-          <p className="eyebrow">AI × EDUCATION × PAYMENTS</p>
+          <p className="eyebrow">
+            AI × EDUCATION × PAYMENTS
+          </p>
 
           <h1>
             Smarter education payments
@@ -137,63 +190,108 @@ function App() {
           </h1>
 
           <p className="subtitle">
-            EduPay AI helps students and parents plan education
-            payments and securely complete them through PayPal.
+            EduPay AI understands your education payment needs,
+            creates a payment plan, and connects it to PayPal.
           </p>
 
           <div className="payment-card">
             <div className="card-header">
               <div>
-                <p className="card-label">Education Payment</p>
-                <h2>Course Fee</h2>
+                <p className="card-label">
+                  AI Payment Planner
+                </p>
+
+                <h2>Plan your payment</h2>
               </div>
 
               <div className="secure">
-                Secure
+                AI
               </div>
             </div>
 
-            <label htmlFor="amount">Payment Amount</label>
+            <label htmlFor="message">
+              Tell EduPay AI what you need to pay
+            </label>
 
-            <div className="amount-input">
-              <span>$</span>
-
-              <input
-                id="amount"
-                type="number"
-                min="1"
-                step="0.01"
-                value={amount}
-                onChange={(event) =>
-                  setAmount(event.target.value)
-                }
-                disabled={loading}
-              />
-
-              <span>USD</span>
-            </div>
+            <textarea
+              id="message"
+              value={message}
+              onChange={(event) =>
+                setMessage(event.target.value)
+              }
+              disabled={loadingPlan || loadingPayment}
+              rows="4"
+            />
 
             <button
               className="pay-button"
-              onClick={createPayment}
-              disabled={loading}
+              onClick={generatePaymentPlan}
+              disabled={loadingPlan || loadingPayment}
             >
-              {loading
-                ? "Processing PayPal Payment..."
-                : "Continue with PayPal"}
+              {loadingPlan
+                ? "Creating Payment Plan..."
+                : "Create AI Payment Plan"}
             </button>
 
-            {message && (
+            {paymentPlan && (
+              <div className="payment-plan">
+                <p className="card-label">
+                  AI PAYMENT PLAN
+                </p>
+
+                <div className="plan-row">
+                  <span>Total Course Fee</span>
+                  <strong>
+                    {paymentPlan.currency}{" "}
+                    {paymentPlan.total_amount.toFixed(2)}
+                  </strong>
+                </div>
+
+                <div className="plan-row">
+                  <span>Installments</span>
+                  <strong>
+                    {paymentPlan.installments}
+                  </strong>
+                </div>
+
+                <div className="plan-row highlight">
+                  <span>Each Payment</span>
+                  <strong>
+                    {paymentPlan.currency}{" "}
+                    {paymentPlan.installment_amount.toFixed(2)}
+                  </strong>
+                </div>
+
+                <p className="paypal-plan-note">
+                  Your next payment will be processed
+                  through PayPal Sandbox.
+                </p>
+
+                <button
+                  className="pay-button"
+                  onClick={createPayment}
+                  disabled={loadingPayment}
+                >
+                  {loadingPayment
+                    ? "Opening PayPal..."
+                    : `Pay ${paymentPlan.currency} ${
+                        paymentPlan.installment_amount.toFixed(2)
+                      } with PayPal`}
+                </button>
+              </div>
+            )}
+
+            {status && (
               <p
                 className={
-                  paymentStatus === "completed"
+                  statusType === "success"
                     ? "success-message"
-                    : paymentStatus === "error"
+                    : statusType === "error"
                       ? "error-message"
                       : "status-message"
                 }
               >
-                {message}
+                {status}
               </p>
             )}
 
@@ -207,35 +305,50 @@ function App() {
         <aside className="info-panel">
           <div className="ai-icon">✦</div>
 
-          <h2>AI-powered payment assistant</h2>
+          <h2>
+            AI-powered education payment assistant
+          </h2>
 
           <p>
-            EduPay AI combines intelligent payment planning
-            with PayPal's secure checkout experience.
+            EduPay AI turns natural-language education
+            payment requests into structured payment plans
+            and connects them with PayPal.
           </p>
 
           <div className="feature-list">
             <div className="feature">
               <span>01</span>
+
               <div>
-                <strong>AI Planning</strong>
-                <p>Understand education payment needs.</p>
+                <strong>AI Understanding</strong>
+
+                <p>
+                  Understand education payment requests.
+                </p>
               </div>
             </div>
 
             <div className="feature">
               <span>02</span>
+
               <div>
-                <strong>Smart Payment</strong>
-                <p>Create the right PayPal payment flow.</p>
+                <strong>Smart Planning</strong>
+
+                <p>
+                  Calculate installment amounts automatically.
+                </p>
               </div>
             </div>
 
             <div className="feature">
               <span>03</span>
+
               <div>
-                <strong>Secure Checkout</strong>
-                <p>Complete payment through PayPal Sandbox.</p>
+                <strong>PayPal Checkout</strong>
+
+                <p>
+                  Process payments through PayPal Sandbox.
+                </p>
               </div>
             </div>
           </div>
