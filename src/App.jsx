@@ -147,67 +147,81 @@ function App() {
     }
   };
 
-  const createPayment = async () => {
-    if (!paymentPlan) {
-      setStatusType("error");
-      setStatus("Please generate a payment plan first.");
-      return;
+  
+const createPayment = async (installmentIndex = 0) => {
+  if (!paymentPlan) {
+    setStatusType("error");
+    setStatus("Please generate a payment plan first.");
+    return;
+  }
+
+  const schedule = paymentPlan.installment_schedule;
+
+  if (!Array.isArray(schedule) || !schedule[installmentIndex]) {
+    setStatusType("error");
+    setStatus("Installment schedule is unavailable. Generate the plan again.");
+    return;
+  }
+
+  const selected = schedule[installmentIndex];
+  const amount = selected.amount;
+
+  try {
+    setLoadingPayment(true);
+    setStatus("");
+    setStatusType("");
+
+    sessionStorage.setItem(
+      "edupay_payment_plan",
+      JSON.stringify(paymentPlan)
+    );
+
+    const response = await fetch(
+      `${BACKEND_URL}/paypal/create-order`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          amount,
+          currency: paymentPlan.currency,
+          description:
+            `EduPay AI installment ${selected.number} of ${paymentPlan.installments}`
+        })
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        data.detail || "Unable to create PayPal order."
+      );
     }
 
-    try {
-      setLoadingPayment(true);
-      setStatus("");
-      setStatusType("");
+    const approvalLink = data.order?.links?.find(
+      (link) => link.rel === "approve"
+    );
 
-      sessionStorage.setItem(
-        "edupay_payment_plan",
-        JSON.stringify(paymentPlan)
-      );
-
-      const response = await fetch(
-        `${BACKEND_URL}/paypal/create-order`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            amount: paymentPlan.installment_amount.toFixed(2),
-            currency: paymentPlan.currency,
-            description: "EduPay AI Education Payment"
-          })
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.detail || "Unable to create PayPal order."
-        );
-      }
-
-      const approvalLink = data.order?.links?.find(
-        (link) => link.rel === "approve"
-      );
-
-      if (!approvalLink) {
-        throw new Error(
-          "PayPal approval link was not returned."
-        );
-      }
-
-      window.location.href = approvalLink.href;
-    } catch (error) {
-      sessionStorage.removeItem(
-        "edupay_payment_plan"
-      );
-
-      setStatusType("error");
-      setStatus(error.message);
-      setLoadingPayment(false);
+    if (!approvalLink) {
+      throw new Error("PayPal approval link was not returned.");
     }
-  };
+
+    window.location.href = approvalLink.href;
+  } catch (error) {
+    sessionStorage.removeItem("edupay_payment_plan");
+    setStatusType("error");
+    setStatus(error.message);
+    setLoadingPayment(false);
+  }
+};
+
+    
+      
+    
+
+    
 
   return (
     <div className="app">
