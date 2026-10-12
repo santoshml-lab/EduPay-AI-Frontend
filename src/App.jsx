@@ -8,6 +8,8 @@ function App() {
   );
 
   const [paymentPlan, setPaymentPlan] = useState(null);
+  const [selectedInstallmentIndex, setSelectedInstallmentIndex] =
+  useState(0);
   const [loadingPlan, setLoadingPlan] = useState(false);
   const [loadingPayment, setLoadingPayment] = useState(false);
 
@@ -134,8 +136,10 @@ function App() {
         );
       }
 
+      
       setPaymentPlan(data.payment_plan);
-    } catch (error) {
+      setSelectedInstallmentIndex(0);
+     } catch (error) {
       setStatusType("error");
       setStatus(error.message);
     } finally {
