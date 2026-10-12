@@ -159,18 +159,45 @@ function App() {
       }
 
       const scheduleTotalCents = plan.installment_schedule.reduce(
-        (sum, item, index) => {
-          if (
-            item.number !== index + 1 ||
-            !/^\d+\.\d{2}$/.test(String(item.amount))
-          ) {
-            throw new Error("The installment schedule is invalid.");
-          }
+  (sum, item, index) => {
+    const amount = Number(item?.amount);
 
-          return sum + Math.round(Number(item.amount) * 100);
-        },
-        0
+    if (
+      Number(item?.number) !== index + 1 ||
+      !Number.isFinite(amount) ||
+      amount <= 0
+    ) {
+      throw new Error(
+        `Installment ${index + 1} has an invalid amount or number.`
       );
+    }
+
+    const amountInCents = Math.round(amount * 100);
+
+    if (
+      !Number.isSafeInteger(amountInCents) ||
+      Math.abs(amount * 100 - amountInCents) > 0.000001
+    ) {
+      throw new Error(
+        `Installment ${index + 1} must have at most two decimal places.`
+      );
+    }
+
+    return sum + amountInCents;
+  },
+  0
+);
+        
+            
+            
+          
+            
+          
+
+          
+        
+        
+      
 
       const totalCents = Math.round(Number(plan.total_amount) * 100);
 
